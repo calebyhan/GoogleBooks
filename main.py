@@ -1,79 +1,64 @@
 from typing import Optional
 
-import discord
-from discord import ui
-from discord.ext import commands, menus
-from discord.ext.menus import button, First, Last
+import interactions
 
 import json
 import requests
 from decouple import config
+import datetime
+import random
 
+URL = "https://openlibrary.org/"
 TOKEN = config("TOKEN")
 
-class Bot(commands.Bot):
-    def __init__(self):
-        intents = discord.Intents.default()
-        intents.message_content = True
+bot = interactions.Client(token=TOKEN, presence=interactions.ClientPresence(
+        status=interactions.StatusType.IDLE,
+        activities=[
+            interactions.PresenceActivity(name="you vibing", type=interactions.PresenceActivityType.WATCHING)
+        ]
+    ))
 
-        super().__init__(command_prefix=commands.when_mentioned_or('$'), intents=intents)
+print("Bot is on.")
 
-    async def on_ready(self):
-        print(f'Logged in as {self.user} (ID: {self.user.id})')
-        print('------')
+@bot.command(name="search", description="Searches query", scope=905301278647783424)
+@interactions.option("query")
+@interactions.option(choices=[interactions.Choice(name="query", value="q"), interactions.Choice(name="title", value="title"), interactions.Choice(name="author", value="author")])
+async def search_command(ctx: interactions.CommandContext, query: str, choice: str):
+    await ctx.defer()
+    response = requests.get(URL + "search.json?" + choice + "=" + query.replace(" ", "+")).json()
+    book = requests.get(URL + response["docs"][0]["key"] + ".json").json()
 
-bot = Bot()
-
-class MySource(menus.ListPageSource):
-    async def format_page(self, menu, entries):
-        embed = discord.Embed(
-            description=f"This is number {entries}.", 
-            color=discord.Colour.random()
+    authors = []
+    for i in book["authors"]:
+        author = requests.get(URL + i["author"]["key"] + ".json").json()
+        authors.append(author["name"])
+    
+    embed = interactions.Embed(
+        title="Search results",
+        fields=[
+            interactions.EmbedField(
+                name=book["title"],
+                value=", ".join(authors)
+            ),
+            interactions.EmbedField(
+                name="Description",
+                value=book["description"]
+            )
+        ],
+        timestamp=datetime.datetime.utcnow()
+    ).set_footer("[https://openlibrary.org/](Open Library)")
+    
+    selection = interactions.SelectMenu(
+        options=[
+            interactions.SelectOption(label="Rock", emoji=interactions.Emoji(name="🪨"), value="rock"),
+            interactions.SelectOption(label="Paper", emoji=interactions.Emoji(name="📃"), value="paper"),
+            interactions.SelectOption(label="Scissors", emoji=interactions.Emoji(name="✂"), value="scissors"),
+        ],
+        placeholder="Choose your option",
+        custom_id="rps_selection",
+        min_values=1,
+        max_values=1,
         )
-        embed.set_footer(text=f"Requested by {menu.ctx.author}")
-        return embed
+    await ctx.send(embeds=embed, components=selection)
 
-class MyMenuPages(ui.View, menus.MenuPages):
-    def __init__(self, source):
-        super().__init__(timeout=60)
-        self._source = source
-        self.current_page = 0
-        self.ctx = None
-        self.message = None
-
-    async def start(self, ctx, *, channel=None, wait=False):
-        await self._source._prepare_once()
-        self.ctx = ctx
-        self.message = await self.send_initial_message(ctx, ctx.channel)
-
-    async def _get_kwargs_from_page(self, page):
-        value = await super()._get_kwargs_from_page(page)
-        if 'view' not in value:
-            value.update({'view': self})
-        return value
-
-    async def interaction_check(self, interaction):
-        return interaction.user == self.ctx.author
-
-    @ui.button(emoji='◀️', style=discord.ButtonStyle.blurple)
-    async def before_page(self, button, interaction):
-        await self.show_checked_page(self.current_page - 1)
-
-    @ui.button(emoji='⏹️', style=discord.ButtonStyle.blurple)
-    async def stop_page(self, button, interaction):
-        self.stop()
-
-    @ui.button(emoji='▶️', style=discord.ButtonStyle.blurple)
-    async def next_page(self, button, interaction):
-        await self.show_checked_page(self.current_page + 1)
-
-
-@bot.command()
-async def test(ctx):
-    data = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-    formatter = MySource(data, per_page=1)
-    menu = MyMenuPages(formatter)
-    await menu.start(ctx)
-
-
-bot.run(TOKEN)
+bot.start()
