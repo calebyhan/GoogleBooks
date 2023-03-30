@@ -26,39 +26,83 @@ print("Bot is on.")
 async def search_command(ctx: interactions.CommandContext, query: str, choice: str):
     await ctx.defer()
     response = requests.get(URL + "search.json?" + choice + "=" + query.replace(" ", "+")).json()
-    book = requests.get(URL + response["docs"][0]["key"] + ".json").json()
 
-    authors = []
-    for i in book["authors"]:
-        author = requests.get(URL + i["author"]["key"] + ".json").json()
-        authors.append(author["name"])
-    
-    embed = interactions.Embed(
-        title="Search results",
-        fields=[
-            interactions.EmbedField(
-                name=book["title"],
-                value=", ".join(authors)
-            ),
-            interactions.EmbedField(
-                name="Description",
-                value=book["description"]
-            )
-        ],
-        timestamp=datetime.datetime.utcnow()
-    ).set_footer("[https://openlibrary.org/](Open Library)")
-    
     selection = interactions.SelectMenu(
         options=[
-            interactions.SelectOption(label="Rock", emoji=interactions.Emoji(name="🪨"), value="rock"),
-            interactions.SelectOption(label="Paper", emoji=interactions.Emoji(name="📃"), value="paper"),
-            interactions.SelectOption(label="Scissors", emoji=interactions.Emoji(name="✂"), value="scissors"),
+            interactions.SelectOption(label="Main", value="main"),
+            interactions.SelectOption(label="Subjects", value="subjects"),
+            interactions.SelectOption(label="People", value="people"),
+            interactions.SelectOption(label="More info", value="info")
         ],
         placeholder="Choose your option",
-        custom_id="rps_selection",
+        custom_id="menu_select",
         min_values=1,
         max_values=1,
         )
-    await ctx.send(embeds=embed, components=selection)
+    
+    menu = "main"
+
+    if choice == "title":
+        book = requests.get(URL + response["docs"][0]["key"] + ".json").json()
+
+        authors = []
+        for i in book["authors"]:
+            author = requests.get(URL + i["author"]["key"] + ".json").json()
+            authors.append(author["name"])
+        
+        if menu == "main":
+            embed = interactions.Embed(
+                title="Search results",
+                fields=[
+                    interactions.EmbedField(
+                        name=book["title"],
+                        value=", ".join(authors)
+                    ),
+                    interactions.EmbedField(
+                        name="Description",
+                        value=book["description"]
+                    )
+                ],
+                timestamp=datetime.datetime.utcnow()
+            ).set_footer("https://openlibrary.org").set_image(url="https://covers.openlibrary.org/b/id/" + str(book["covers"][0]) + "-L.jpg")
+        elif menu == "subjects":
+            embed = interactions.Embed(
+                title="Search results",
+                fields=[
+                    interactions.EmbedField(
+                        name=book["Subjects"],
+                        value=", ".join(book["subjects"])
+                    )
+                ],
+                timestamp=datetime.datetime.utcnow()
+            ).set_footer("https://openlibrary.org")
+        elif menu == "people":
+            embed = interactions.Embed(
+                title="Search results",
+                fields=[
+                    interactions.EmbedField(
+                        name=book["Subjects"],
+                        value=", ".join(book["subject_people"])
+                    )
+                ],
+                timestamp=datetime.datetime.utcnow()
+            ).set_footer("https://openlibrary.org")
+        else:
+            embed = interactions.Embed(
+                title="Search results",
+                fields=[
+                    interactions.EmbedField(
+                        name="More info",
+                        value=f"""ISBN : {book['key'].split("/")[-1]}
+                        Book link: https://openlibrary.org{book['key']}
+                        Website revisions: {str(book["revision"])}
+                        """
+                    )
+                ],
+                timestamp=datetime.datetime.utcnow()
+            ).set_footer("https://openlibrary.org")
+        await ctx.send(embeds=embed, components=selection)
+    ctx, menu = await bot.wait_for_select("menu_select")
+    print(menu)
 
 bot.start()
